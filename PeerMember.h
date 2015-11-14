@@ -23,6 +23,18 @@ namespace WlanHostedNetwork {
 				return _MacAddress;
 			}
 		}
+
+		property String^ Vendor
+		{
+			String^ get()
+			{
+				return _Vendor;
+			}
+			void set(String^ value)
+			{
+				_Vendor = value;
+			}
+		}
 		PeerMember(WLAN_HOSTED_NETWORK_PEER_STATE auth)
 		{
 			switch (auth.PeerAuthState)
@@ -34,6 +46,7 @@ namespace WlanHostedNetwork {
 				_AuthState = gcnew String(L"ÎÞÐ§");
 			}
 			_MacAddress = MacToString(auth.PeerMacAddress);
+			_Vendor = L"";
 		}
 		~PeerMember()
 		{
@@ -48,6 +61,7 @@ namespace WlanHostedNetwork {
 			return sb->ToString();
 		}
 	private:
+		String^ _Vendor;
 		String^ _AuthState;
 		String^ _MacAddress;
 	};

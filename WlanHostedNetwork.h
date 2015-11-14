@@ -59,6 +59,17 @@ namespace WlanHostedNetwork {
 				}
 			}
 		}
+		property bool IsHalfHiddenNetwork
+		{
+			bool get()
+			{
+				return _IsHalfHiddenNetwork;
+			}
+			void set(bool value)
+			{
+				_IsHalfHiddenNetwork = value;
+			}
+		}
 		property bool IsStarted
 		{
 			bool get()
@@ -159,9 +170,9 @@ namespace WlanHostedNetwork {
 				return Guid(NetStatus.IPDeviceID.Data1, NetStatus.IPDeviceID.Data2, NetStatus.IPDeviceID.Data3, chs);
 			}
 		}
-		property array<PeerMember^>^ PeerMembers
+		virtual property array<PeerMember^>^ PeerMembers
 		{
-			array<PeerMember^>^ get()
+			virtual array<PeerMember^>^ get()
 			{
 				RefreshStatus();
 				array<PeerMember^>^ chs = gcnew array<PeerMember^>(NetStatus.dwNumberOfPeers);
@@ -274,41 +285,38 @@ namespace WlanHostedNetwork {
 			ThrowForFailReasonAndDelete(dwFailedReason);
 			ThrowIfFailed(dwResult);
 		}
-		char* WcharToChar(const wchar_t* wp)
+		unsigned char* Encode(String^ wp, int& length)
 		{
-			char *m_char;
-			int len = WideCharToMultiByte(CP_ACP, 0, wp, wcslen(wp), NULL, 0, NULL, NULL);
-			m_char = new char[len + 1];
-			WideCharToMultiByte(CP_ACP, 0, wp, wcslen(wp), m_char, len, NULL, NULL);
-			m_char[len] = '\0';
-			return m_char;
-		}
-		wchar_t* ToUnmanagedString(String^ s)
-		{
-			return (wchar_t*)(System::Runtime::InteropServices::Marshal::UnsafeAddrOfPinnedArrayElement(s->ToCharArray(), 0).ToPointer());
+			auto chs = System::Text::Encoding::GetEncoding("utf-8")->GetBytes(wp->ToCharArray());
+			auto lst = gcnew System::Collections::Generic::List<unsigned char>();
+			lst->AddRange(chs);
+			lst->Add(0);
+			chs = lst->ToArray();
+			length = chs->Length;
+			return reinterpret_cast<unsigned char*>(System::Runtime::InteropServices::Marshal::UnsafeAddrOfPinnedArrayElement(chs, 0).ToPointer());
 		}
 		void SetKEY(String^ key)
 		{
-			unsigned char* chkey = reinterpret_cast<unsigned char*>(WcharToChar(ToUnmanagedString(key)));
+			int length = 0;
+			unsigned char* chkey = Encode(key, length);
 			PWLAN_HOSTED_NETWORK_REASON dwFailedReason = new WLAN_HOSTED_NETWORK_REASON();
 			DWORD dwResult = 0;
-			dwResult = WlanHostedNetworkSetSecondaryKey(hWLAN, key->Length + 1, chkey, true, false, dwFailedReason, nullptr);
-			delete[] chkey;
+			dwResult = WlanHostedNetworkSetSecondaryKey(hWLAN, length, chkey, true, false, dwFailedReason, nullptr);
 			ThrowForFailReasonAndDelete(dwFailedReason);
 			ThrowIfFailed(dwResult);
 			_Key = key;
 		}
 		void SetSSID(String^ ssidname)
 		{
-			char* chname = WcharToChar(ToUnmanagedString(ssidname));
+			int length = 0;
+			char* chname = reinterpret_cast<char*>(Encode(ssidname, length));
 			PWLAN_HOSTED_NETWORK_REASON dwFailedReason = new WLAN_HOSTED_NETWORK_REASON();
 			WLAN_HOSTED_NETWORK_CONNECTION_SETTINGS cfg = { 0 };
-			memcpy(cfg.hostedNetworkSSID.ucSSID, chname, ssidname->Length);
-			cfg.hostedNetworkSSID.uSSIDLength = ssidname->Length;
+			memcpy(cfg.hostedNetworkSSID.ucSSID, chname, length);
+			cfg.hostedNetworkSSID.uSSIDLength = length - static_cast<int>(!_IsHalfHiddenNetwork);
 			cfg.dwMaxNumberOfPeers = _MaxPeer;
 			DWORD dwResult = WlanHostedNetworkSetProperty(hWLAN, wlan_hosted_network_opcode_connection_settings,
 				sizeof(WLAN_HOSTED_NETWORK_CONNECTION_SETTINGS), &cfg, dwFailedReason, nullptr);
-			delete[] chname;
 			ThrowForFailReasonAndDelete(dwFailedReason);
 			ThrowIfFailed(dwResult);
 			_SSID = ssidname;
@@ -343,6 +351,7 @@ namespace WlanHostedNetwork {
 	private:
 		String^ _Key = L"";
 		String^ _SSID = L"";
+		bool _IsHalfHiddenNetwork;
 		bool _IsEnabled;
 		bool _IsStarted;
 		int _MaxPeer = 20;
