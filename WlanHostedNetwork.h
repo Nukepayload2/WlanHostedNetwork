@@ -222,11 +222,15 @@ namespace WlanHostedNetwork {
 	protected:
 		virtual void RefreshStatus()
 		{
-			PWLAN_HOSTED_NETWORK_STATUS NetStat = nullptr;
+			static PWLAN_HOSTED_NETWORK_STATUS NetStat = nullptr;
+			if (NetStat != nullptr)
+			{
+				WlanFreeMemory(NetStat);
+				NetStat = nullptr;
+			}
 			auto stat = WlanHostedNetworkQueryStatus(hWLAN, &NetStat, nullptr);
 			ThrowIfFailed(stat);
 			NetStatus = *NetStat;
-			WlanFreeMemory(NetStat);
 		}
 		void AllowHostedNetWork()
 		{
