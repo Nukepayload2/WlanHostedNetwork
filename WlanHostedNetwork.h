@@ -10,9 +10,14 @@ DWORD WlanVersion;
 WLAN_HOSTED_NETWORK_STATUS NetStatus;
 #pragma managed
 using namespace System;
+using namespace System::Collections::Generic;
+using namespace System::Collections::ObjectModel;
 
-namespace WlanHostedNetwork {
-
+namespace WlanHostedNetwork 
+{
+	void WINAPI OnWirelessHostedNetworkMessage(PWLAN_NOTIFICATION_DATA data, PVOID context);
+	void ClearItems();
+    //WLAN承载网络
 	public ref class WlanHostedNetwork :IDisposable
 	{
 	public:
@@ -20,6 +25,7 @@ namespace WlanHostedNetwork {
 		{
 			auto retv = WlanOpenHandle(2, nullptr, &WlanVersion, &hWLAN);
 			ThrowIfFailed(retv);
+			WlanRegisterNotification(hWLAN, WLAN_NOTIFICATION_SOURCE_HNWK, TRUE, OnWirelessHostedNetworkMessage, nullptr, nullptr, nullptr);
 			if (HostedNetworkState == gcnew String(L"已激活"))
 			{
 				_IsEnabled = true;
@@ -29,6 +35,18 @@ namespace WlanHostedNetwork {
 		~WlanHostedNetwork()
 		{
 			WlanCloseHandle(hWLAN, nullptr);
+			Dispatcher->Invoke(gcnew Action(ClearItems));
+		}
+		static property Action<Action^>^ Dispatcher
+		{
+			Action<Action^>^ get()
+			{
+				return _runOnUIThread;
+			}
+			void set(Action<Action^>^ runOnUIThread)
+			{
+				_runOnUIThread = runOnUIThread;
+			}
 		}
 		IntPtr UnsafeGetHandle()
 		{
@@ -93,46 +111,46 @@ namespace WlanHostedNetwork {
 			String^ get()
 			{
 				RefreshStatus();
-				String^ ErrStr;
+				String^ typeDesc;
 				switch (NetStatus.dot11PhyType)
 				{
 				case DOT11_PHY_TYPE::dot11_phy_type_unknown:
-					ErrStr = gcnew String(L"dot11_phy_type_unknown");
+					typeDesc = gcnew String(L"dot11_phy_type_unknown");
 					break;
 				case DOT11_PHY_TYPE::dot11_phy_type_fhss:
-					ErrStr = gcnew String(L"dot11_phy_type_fhss");
+					typeDesc = gcnew String(L"dot11_phy_type_fhss");
 					break;
 				case DOT11_PHY_TYPE::dot11_phy_type_dsss:
-					ErrStr = gcnew String(L"dot11_phy_type_dsss");
+					typeDesc = gcnew String(L"dot11_phy_type_dsss");
 					break;
 				case DOT11_PHY_TYPE::dot11_phy_type_irbaseband:
-					ErrStr = gcnew String(L"dot11_phy_type_irbaseband");
+					typeDesc = gcnew String(L"dot11_phy_type_irbaseband");
 					break;
 				case DOT11_PHY_TYPE::dot11_phy_type_ofdm:
-					ErrStr = gcnew String(L"dot11_phy_type_ofdm");
+					typeDesc = gcnew String(L"dot11_phy_type_ofdm");
 					break;
 				case DOT11_PHY_TYPE::dot11_phy_type_hrdsss:
-					ErrStr = gcnew String(L"dot11_phy_type_hrdsss");
+					typeDesc = gcnew String(L"dot11_phy_type_hrdsss");
 					break;
 				case DOT11_PHY_TYPE::dot11_phy_type_erp:
-					ErrStr = gcnew String(L"dot11_phy_type_erp");
+					typeDesc = gcnew String(L"dot11_phy_type_erp");
 					break;
 				case DOT11_PHY_TYPE::dot11_phy_type_ht:
-					ErrStr = gcnew String(L"dot11_phy_type_ht");
+					typeDesc = gcnew String(L"dot11_phy_type_ht");
 					break;
 				case DOT11_PHY_TYPE::dot11_phy_type_vht:
-					ErrStr = gcnew String(L"dot11_phy_type_vht");
+					typeDesc = gcnew String(L"dot11_phy_type_vht");
 					break;
 				case DOT11_PHY_TYPE::dot11_phy_type_IHV_start:
-					ErrStr = gcnew String(L"dot11_phy_type_IHV_start");
+					typeDesc = gcnew String(L"dot11_phy_type_IHV_start");
 					break;
 				case DOT11_PHY_TYPE::dot11_phy_type_IHV_end:
-					ErrStr = gcnew String(L"dot11_phy_type_IHV_end");
+					typeDesc = gcnew String(L"dot11_phy_type_IHV_end");
 					break;
 				default:
-					ErrStr = "";
+					typeDesc = "";
 				}
-				return ErrStr;
+				return typeDesc;
 			}
 		}
 		property UInt32 NumberOfPeers
@@ -170,6 +188,8 @@ namespace WlanHostedNetwork {
 				return Guid(NetStatus.IPDeviceID.Data1, NetStatus.IPDeviceID.Data2, NetStatus.IPDeviceID.Data3, chs);
 			}
 		}
+
+		[ObsoleteAttribute(L"改用ConnectedPeerMembers进行数据绑定")]
 		virtual property array<PeerMember^>^ PeerMembers
 		{
 			virtual array<PeerMember^>^ get()
@@ -179,6 +199,13 @@ namespace WlanHostedNetwork {
 				for (size_t i = 0; i < NetStatus.dwNumberOfPeers; i++)
 					chs[i] = gcnew PeerMember(NetStatus.PeerList[i]);
 				return chs;
+			}
+		}
+		static property ObservableCollection<PeerMember^>^ ConnectedPeerMembers
+		{
+			ObservableCollection<PeerMember^>^ get()
+			{
+				return _ConnectedPeerMembers;
 			}
 		}
 		property UInt32 ChannelFrequency
@@ -266,6 +293,7 @@ namespace WlanHostedNetwork {
 			dwResult = WlanHostedNetworkStopUsing(hWLAN, pFailReason, nullptr);
 			ThrowForFailReasonAndDelete(pFailReason);
 			ThrowIfFailed(dwResult);
+			Dispatcher->Invoke(gcnew Action(ClearItems));
 			_IsStarted = false;
 		}
 		void ThrowForFailReasonAndDelete(WLAN_HOSTED_NETWORK_REASON* pFailReason)
@@ -359,5 +387,69 @@ namespace WlanHostedNetwork {
 		bool _IsEnabled;
 		bool _IsStarted;
 		int _MaxPeer = 20;
+		static Action<Action^>^ _runOnUIThread;
+		static ObservableCollection<PeerMember^>^ _ConnectedPeerMembers=gcnew ObservableCollection<PeerMember^>();
 	};
+
+	//下面的内容本应该出现在lambda表达式。由于c++/cli限制只好写到外面了。
+
+	WLAN_HOSTED_NETWORK_PEER_STATE _newState;
+	int _removeIndex;
+	void ClearItems()
+	{
+		WlanHostedNetwork::ConnectedPeerMembers->Clear();
+	}
+	void AddItem()
+	{
+		WlanHostedNetwork::ConnectedPeerMembers->Add(gcnew PeerMember(_newState));
+	}
+	void AddItemOnUIThread()
+	{
+		WlanHostedNetwork::Dispatcher->Invoke(gcnew Action(AddItem));
+	}
+	void RemoveAt()
+	{
+		WlanHostedNetwork::ConnectedPeerMembers->RemoveAt(_removeIndex);
+	}
+	void RemoveItemOnUIThread()
+	{
+		auto mac = PeerMember::MacToString(_newState.PeerMacAddress);
+		int i = 0;
+		for each (PeerMember^ member in WlanHostedNetwork::ConnectedPeerMembers)
+		{
+			if (member->MacAddress == mac)
+			{
+				_removeIndex = i;
+				WlanHostedNetwork::Dispatcher->Invoke(gcnew Action(RemoveAt));
+				break;
+			}
+			i++;
+		}
+	}
+	void WINAPI OnWirelessHostedNetworkMessage(PWLAN_NOTIFICATION_DATA data, PVOID context)
+	{
+		switch (data->NotificationCode)
+		{
+		case wlan_hosted_network_peer_state_change:
+			if (data->dwDataSize > 0 && data->pData != nullptr)
+			{
+				auto state = (WLAN_HOSTED_NETWORK_DATA_PEER_STATE_CHANGE*)(data->pData);
+				_newState = state->NewState;
+				switch (_newState.PeerAuthState)
+				{
+				case wlan_hosted_network_peer_state_authenticated:
+					AddItemOnUIThread();
+					break;
+				case wlan_hosted_network_peer_state_invalid:
+					RemoveItemOnUIThread();
+					break;
+				default:
+					break;
+				}
+			}
+			break;
+		default:
+			break;
+		}
+	}
 }

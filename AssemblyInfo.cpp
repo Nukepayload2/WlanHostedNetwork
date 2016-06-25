@@ -12,12 +12,12 @@ using namespace System::Security::Permissions;
 // 与程序集关联的信息。
 //
 [assembly:AssemblyTitleAttribute(L"WlanHostedNetwork")];
-[assembly:AssemblyDescriptionAttribute(L"")];
+[assembly:AssemblyDescriptionAttribute(L"无线承载网络")];
 [assembly:AssemblyConfigurationAttribute(L"")];
-[assembly:AssemblyCompanyAttribute(L"")];
+[assembly:AssemblyCompanyAttribute(L"Nukepayload2")];
 [assembly:AssemblyProductAttribute(L"WlanHostedNetwork")];
-[assembly:AssemblyCopyrightAttribute(L"Copyright (c)  2015")];
-[assembly:AssemblyTrademarkAttribute(L"")];
+[assembly:AssemblyCopyrightAttribute(L"Copyright (c) Nukepayload2 2015-2016")];
+[assembly:AssemblyTrademarkAttribute(L"Nukepayload2")];
 [assembly:AssemblyCultureAttribute(L"")];
 
 //
@@ -31,7 +31,7 @@ using namespace System::Security::Permissions;
 // 您可以指定所有值，也可以使用“修订号”和“生成号”的默认值，
 // 方法是按如下所示使用“*”: :
 
-[assembly:AssemblyVersionAttribute("1.0.*")];
+[assembly:AssemblyVersionAttribute("1.2.0.0")];
 
 [assembly:ComVisible(false)];
 
