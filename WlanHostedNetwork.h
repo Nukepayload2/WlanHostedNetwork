@@ -5,9 +5,10 @@
 #include<Windows.h>
 #include<wlanapi.h>
 #include"PeerMember.h"
+#include "WlanHostedNetworkStatus.h"
 HANDLE hWLAN;
 DWORD WlanVersion;
-WLAN_HOSTED_NETWORK_STATUS NetStatus;
+
 #pragma managed
 using namespace System;
 using namespace System::Collections::Generic;
@@ -26,7 +27,7 @@ namespace WlanHostedNetwork
 			auto retv = WlanOpenHandle(2, nullptr, &WlanVersion, &hWLAN);
 			ThrowIfFailed(retv);
 			WlanRegisterNotification(hWLAN, WLAN_NOTIFICATION_SOURCE_HNWK, TRUE, OnWirelessHostedNetworkMessage, nullptr, nullptr, nullptr);
-			if (HostedNetworkState == gcnew String(L"已激活"))
+			if (CurrentStatus->HostedNetworkState == gcnew String(L"已激活"))
 			{
 				_IsEnabled = true;
 				_IsStarted = true;
@@ -106,122 +107,12 @@ namespace WlanHostedNetwork
 				}
 			}
 		}
-		property String^ Dot11PhyType
-		{
-			String^ get()
-			{
-				RefreshStatus();
-				String^ typeDesc;
-				switch (NetStatus.dot11PhyType)
-				{
-				case DOT11_PHY_TYPE::dot11_phy_type_unknown:
-					typeDesc = gcnew String(L"dot11_phy_type_unknown");
-					break;
-				case DOT11_PHY_TYPE::dot11_phy_type_fhss:
-					typeDesc = gcnew String(L"dot11_phy_type_fhss");
-					break;
-				case DOT11_PHY_TYPE::dot11_phy_type_dsss:
-					typeDesc = gcnew String(L"dot11_phy_type_dsss");
-					break;
-				case DOT11_PHY_TYPE::dot11_phy_type_irbaseband:
-					typeDesc = gcnew String(L"dot11_phy_type_irbaseband");
-					break;
-				case DOT11_PHY_TYPE::dot11_phy_type_ofdm:
-					typeDesc = gcnew String(L"dot11_phy_type_ofdm");
-					break;
-				case DOT11_PHY_TYPE::dot11_phy_type_hrdsss:
-					typeDesc = gcnew String(L"dot11_phy_type_hrdsss");
-					break;
-				case DOT11_PHY_TYPE::dot11_phy_type_erp:
-					typeDesc = gcnew String(L"dot11_phy_type_erp");
-					break;
-				case DOT11_PHY_TYPE::dot11_phy_type_ht:
-					typeDesc = gcnew String(L"dot11_phy_type_ht");
-					break;
-				case DOT11_PHY_TYPE::dot11_phy_type_vht:
-					typeDesc = gcnew String(L"dot11_phy_type_vht");
-					break;
-				case DOT11_PHY_TYPE::dot11_phy_type_IHV_start:
-					typeDesc = gcnew String(L"dot11_phy_type_IHV_start");
-					break;
-				case DOT11_PHY_TYPE::dot11_phy_type_IHV_end:
-					typeDesc = gcnew String(L"dot11_phy_type_IHV_end");
-					break;
-				default:
-					typeDesc = "";
-				}
-				return typeDesc;
-			}
-		}
-		property UInt32 NumberOfPeers
-		{
-			UInt32 get()
-			{
-				RefreshStatus();
-				return NetStatus.dwNumberOfPeers;
-			}
-		}
-		property String^ HostedNetworkState
-		{
-			String^ get()
-			{
-				RefreshStatus();
-				switch (NetStatus.HostedNetworkState)
-				{
-				case WLAN_HOSTED_NETWORK_STATE::wlan_hosted_network_active:
-					return gcnew String(L"已激活");
-				case WLAN_HOSTED_NETWORK_STATE::wlan_hosted_network_idle:
-					return gcnew String(L"空闲");
-				default:
-					return gcnew String(L"不可用");
-				}
-			}
-		}
-		property Guid IPDeviceID
-		{
-			Guid get()
-			{
-				RefreshStatus();
-				array<unsigned char>^ chs = gcnew array<unsigned char>(8);
-				for (size_t i = 0; i < 8; i++)
-					chs[i] = NetStatus.IPDeviceID.Data4[i];
-				return Guid(NetStatus.IPDeviceID.Data1, NetStatus.IPDeviceID.Data2, NetStatus.IPDeviceID.Data3, chs);
-			}
-		}
 
-		[ObsoleteAttribute(L"改用ConnectedPeerMembers进行数据绑定")]
-		virtual property array<PeerMember^>^ PeerMembers
-		{
-			virtual array<PeerMember^>^ get()
-			{
-				RefreshStatus();
-				array<PeerMember^>^ chs = gcnew array<PeerMember^>(NetStatus.dwNumberOfPeers);
-				for (size_t i = 0; i < NetStatus.dwNumberOfPeers; i++)
-					chs[i] = gcnew PeerMember(NetStatus.PeerList[i]);
-				return chs;
-			}
-		}
 		static property ObservableCollection<PeerMember^>^ ConnectedPeerMembers
 		{
 			ObservableCollection<PeerMember^>^ get()
 			{
 				return _ConnectedPeerMembers;
-			}
-		}
-		property UInt32 ChannelFrequency
-		{
-			UInt32 get()
-			{
-				RefreshStatus();
-				return NetStatus.ulChannelFrequency;
-			}
-		}
-		property String^ HostedNetworkBSSID
-		{
-			String^ get()
-			{
-				RefreshStatus();
-				return PeerMember::MacToString(NetStatus.wlanHostedNetworkBSSID);
 			}
 		}
 		property String^ Key
@@ -246,19 +137,20 @@ namespace WlanHostedNetwork
 				SetSSID(value);
 			}
 		}
-	protected:
-		virtual void RefreshStatus()
+		property WlanHostedNetworkStatus^ CurrentStatus
 		{
-			static PWLAN_HOSTED_NETWORK_STATUS NetStat = nullptr;
-			if (NetStat != nullptr)
+			WlanHostedNetworkStatus^ get()
 			{
-				WlanFreeMemory(NetStat);
-				NetStat = nullptr;
+				PWLAN_HOSTED_NETWORK_STATUS netStat = nullptr;
+				auto queryStatus = WlanHostedNetworkQueryStatus(hWLAN, &netStat, nullptr);
+				ThrowIfFailed(queryStatus);
+				auto netStatus = gcnew WlanHostedNetworkStatus(netStat);
+				WlanFreeMemory(netStat);
+				return netStatus;
 			}
-			auto stat = WlanHostedNetworkQueryStatus(hWLAN, &NetStat, nullptr);
-			ThrowIfFailed(stat);
-			NetStatus = *NetStat;
 		}
+	protected:
+
 		void AllowHostedNetWork()
 		{
 			PWLAN_HOSTED_NETWORK_REASON pFailReason = new WLAN_HOSTED_NETWORK_REASON();
@@ -268,6 +160,7 @@ namespace WlanHostedNetwork
 			ThrowIfFailed(dwResult);
 			_IsEnabled = true;
 		}
+
 		void DisallowHostedNetWork()
 		{
 			PWLAN_HOSTED_NETWORK_REASON pFailReason = new WLAN_HOSTED_NETWORK_REASON();
@@ -275,8 +168,10 @@ namespace WlanHostedNetwork
 			dwResult = WlanHostedNetworkForceStop(hWLAN, pFailReason, nullptr);
 			ThrowForFailReasonAndDelete(pFailReason);
 			ThrowIfFailed(dwResult);
+			Dispatcher->Invoke(gcnew Action(ClearItems));
 			_IsEnabled = false;
 		}
+
 		void StartHostedNetWork()
 		{
 			PWLAN_HOSTED_NETWORK_REASON pFailReason = new WLAN_HOSTED_NETWORK_REASON();
@@ -286,6 +181,7 @@ namespace WlanHostedNetwork
 			ThrowIfFailed(dwResult);
 			_IsStarted = true;
 		}
+
 		void StopHostedNetWork()
 		{
 			PWLAN_HOSTED_NETWORK_REASON pFailReason = new WLAN_HOSTED_NETWORK_REASON();
@@ -296,6 +192,7 @@ namespace WlanHostedNetwork
 			Dispatcher->Invoke(gcnew Action(ClearItems));
 			_IsStarted = false;
 		}
+
 		void ThrowForFailReasonAndDelete(WLAN_HOSTED_NETWORK_REASON* pFailReason)
 		{
 			if (*pFailReason != WLAN_HOSTED_NETWORK_REASON::wlan_hosted_network_reason_success)
@@ -308,6 +205,7 @@ namespace WlanHostedNetwork
 			}
 			delete pFailReason;
 		}
+
 		void Reactive()
 		{
 			DWORD dwResult = 0;
@@ -316,7 +214,9 @@ namespace WlanHostedNetwork
 			dwResult = WlanHostedNetworkSetProperty(hWLAN, wlan_hosted_network_opcode_enable, sizeof(BOOL), &bIsAllow, dwFailedReason, nullptr);
 			ThrowForFailReasonAndDelete(dwFailedReason);
 			ThrowIfFailed(dwResult);
+			Dispatcher->Invoke(gcnew Action(ClearItems));
 		}
+
 		unsigned char* Encode(String^ wp, int& length)
 		{
 			auto chs = System::Text::Encoding::GetEncoding("utf-8")->GetBytes(wp->ToCharArray());
@@ -327,6 +227,7 @@ namespace WlanHostedNetwork
 			length = chs->Length;
 			return reinterpret_cast<unsigned char*>(System::Runtime::InteropServices::Marshal::UnsafeAddrOfPinnedArrayElement(chs, 0).ToPointer());
 		}
+
 		void SetKEY(String^ key)
 		{
 			int length = 0;
@@ -338,6 +239,7 @@ namespace WlanHostedNetwork
 			ThrowIfFailed(dwResult);
 			_Key = key;
 		}
+
 		void SetSSID(String^ ssidname)
 		{
 			int length = 0;

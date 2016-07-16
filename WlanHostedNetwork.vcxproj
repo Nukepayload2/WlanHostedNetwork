@@ -140,6 +140,7 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="Stdafx.h" />
     <ClInclude Include="WlanHostedNetwork.h" />
+    <ClInclude Include="WlanHostedNetworkStatus.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="AssemblyInfo.cpp" />
